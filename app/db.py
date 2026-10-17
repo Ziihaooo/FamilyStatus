@@ -10,11 +10,21 @@ PRESET_STATUSES = ["Home", "Out", "Busy", "Sleeping"]
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS members (
+        CREATE TABLE IF NOT EXISTS families (
             id   INTEGER PRIMARY KEY,
-            name  TEXT NOT NULL UNIQUE
+            name TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS members (
+            id        INTEGER PRIMARY KEY,
+            family_id INTEGER NOT NULL REFERENCES families(id),
+            name      TEXT NOT NULL,
+            UNIQUE (family_id, name)  -- no two "Dad"s in the same family
+        )
+    """)
+    # one family for now, until sign-up exists
+    conn.execute("INSERT OR IGNORE INTO families (id, name) VALUES (1, 'My family')")
     # the catalog: every status that exists, preset or custom, stored once
     conn.execute("""
         CREATE TABLE IF NOT EXISTS statuses (
@@ -43,16 +53,20 @@ def init_db():
 
 # ---------- members ----------
 
-def list_members():
+def list_members(family_id):
     conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute("SELECT id, name FROM members").fetchall()
+    rows = conn.execute(
+        "SELECT id, name FROM members WHERE family_id = ?", (family_id,)
+    ).fetchall()
     conn.close()
     return rows
 
-def add_member(name):
+def add_member(family_id, name):
     conn = sqlite3.connect(DB_PATH)
     try:
-        conn.execute("INSERT INTO members (name) VALUES (?)", (name,))
+        conn.execute(
+            "INSERT INTO members (family_id, name) VALUES (?, ?)", (family_id, name)
+        )
         conn.commit()
     finally:
         conn.close()  # runs even if the INSERT fails, so no lock is left behind
