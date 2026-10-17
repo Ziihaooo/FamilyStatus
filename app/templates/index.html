@@ -11,7 +11,21 @@
     <ul>
     {% for id, name, statuses in family %}
         <li>{{ id }} - {{ name }}:
-            {% for status_id, text in statuses %}{{ text }}{% if not loop.last %}, {% endif %}{% else %}No status{% endfor %}
+            {% for status_id, text in statuses %}
+                {{ text }}
+                <form method="post" action="/members/{{ id }}/statuses/{{ status_id }}/remove" style="display:inline">
+                    <button type="submit" title="Remove">×</button>
+                </form>
+            {% else %}No status{% endfor %}
+            <form method="post" action="/members/{{ id }}/statuses">
+                {% for preset_id, text, is_preset in presets %}
+                <button type="submit" name="status_id" value="{{ preset_id }}">{{ text }}</button>
+                {% endfor %}
+            </form>
+            <form method="post" action="/members/{{ id }}/statuses/custom">
+                <input name="text" maxlength="40" placeholder="Or write your own">
+                <button type="submit">Add</button>
+            </form>
         </li>
     {% endfor %}
     </ul>
