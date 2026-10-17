@@ -12,6 +12,7 @@ MAX_NAME = 40
 MAX_STATUS = 40
 FAMILY_TZ = timezone(timedelta(hours=8))  # family's local time, used for "today"
 DURATIONS = ["1h", "3h", "today", "forever"]
+FAMILY_ID = 1  # TEMPORARY: everyone is in family 1 until login tells us whose family it is
 
 
 def utc_now():
@@ -47,7 +48,7 @@ def read_family(request: Request, error: str | None = None):
     now = utc_now().isoformat()
     family = [
         (member_id, name, db.list_member_statuses(member_id, now))
-        for member_id, name in db.list_members()
+        for member_id, name in db.list_members(FAMILY_ID)
     ]
     return templates.TemplateResponse(
         request=request,
@@ -98,7 +99,7 @@ def create_member(name: Annotated[str, Form(max_length=MAX_NAME)]):
     if not name:
         return RedirectResponse("/?error=empty", status_code=303)
     try:
-        db.add_member(name)
-    except sqlite3.IntegrityError:  # UNIQUE constraint on name
+        db.add_member(FAMILY_ID, name)
+    except sqlite3.IntegrityError:  # UNIQUE (family_id, name)
         return RedirectResponse("/?error=duplicate", status_code=303)
     return RedirectResponse("/", status_code=303)
