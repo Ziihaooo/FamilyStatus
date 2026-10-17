@@ -8,7 +8,7 @@ def test_add_and_list_member(tmp_path, monkeypatch):
     db.init_db()
     db.add_member("Dad")
 
-    assert db.list_members() == [("Dad",)]
+    assert db.list_members() == [(1, "Dad")]
 
 def test_delete_member(tmp_path, monkeypatch):
     # use a temporary database, so tests never touch your real familystatus.db
@@ -17,6 +17,6 @@ def test_delete_member(tmp_path, monkeypatch):
     db.init_db()
     db.add_member("Mom")
     db.add_member("Dad")
-    db.delete_member("Mom")
+    db.delete_member(1)
 
-    assert db.list_members() == [("Dad",)]
+    assert db.list_members() == [(2, "Dad")]

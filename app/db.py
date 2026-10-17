@@ -17,7 +17,7 @@ def init_db():
 
 def list_members():
     conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute("SELECT name FROM members").fetchall()
+    rows = conn.execute("SELECT id, name FROM members").fetchall()
     conn.close()
     return rows
 
@@ -27,8 +27,8 @@ def add_member(name):
     conn.commit()
     conn.close()
 
-def delete_member(name):
+def delete_member(member_id):
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("DELETE FROM members WHERE name = ?", (name,))
+    conn.execute("DELETE FROM members WHERE id = ?", (member_id,))
     conn.commit()
     conn.close()
