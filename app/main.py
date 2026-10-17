@@ -18,10 +18,15 @@ templates = Jinja2Templates(directory="app/templates")
 # plain def (not async): sqlite3 is blocking, so FastAPI runs these in a thread
 @app.get("/")
 def read_family(request: Request, error: str | None = None):
+    # each member as (id, name, [their statuses])
+    family = [
+        (member_id, name, db.list_member_statuses(member_id))
+        for member_id, name in db.list_members()
+    ]
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"family": db.list_members(), "error": error},
+        context={"family": family, "error": error},
     )
 
 

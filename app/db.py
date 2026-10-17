@@ -62,6 +62,20 @@ def list_statuses():
     conn.close()
     return rows
 
+def list_member_statuses(member_id):
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        """
+        SELECT statuses.id, statuses.text
+        FROM member_statuses
+        JOIN statuses ON statuses.id = member_statuses.status_id
+        WHERE member_statuses.member_id = ?
+        """,
+        (member_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
 def add_status_to_member(member_id, status_id):
     conn = sqlite3.connect(DB_PATH)
     conn.execute(

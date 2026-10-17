@@ -9,8 +9,10 @@
     <h1>Family Status</h1>
 
     <ul>
-    {% for id, name in family %}
-        <li>{{ id }} - {{ name }}</li>
+    {% for id, name, statuses in family %}
+        <li>{{ id }} - {{ name }}:
+            {% for status_id, text in statuses %}{{ text }}{% if not loop.last %}, {% endif %}{% else %}No status{% endfor %}
+        </li>
     {% endfor %}
     </ul>
 
