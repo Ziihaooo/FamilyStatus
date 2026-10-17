@@ -8,6 +8,16 @@
 <body>
     <h1>Family Status</h1>
 
+    {# a macro is a reusable piece of HTML, like a function #}
+    {% macro duration_select() %}
+        <select name="duration">
+            <option value="1h">1 hour</option>
+            <option value="3h">3 hours</option>
+            <option value="today">Today</option>
+            <option value="forever" selected>Until changed</option>
+        </select>
+    {% endmacro %}
+
     <ul>
     {% for id, name, statuses in family %}
         <li>{{ id }} - {{ name }}:
@@ -21,9 +31,11 @@
                 {% for preset_id, text, is_preset in presets %}
                 <button type="submit" name="status_id" value="{{ preset_id }}">{{ text }}</button>
                 {% endfor %}
+                {{ duration_select() }}
             </form>
             <form method="post" action="/members/{{ id }}/statuses/custom">
                 <input name="text" maxlength="40" placeholder="Or write your own">
+                {{ duration_select() }}
                 <button type="submit">Add</button>
             </form>
         </li>

@@ -28,6 +28,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS member_statuses (
             member_id INTEGER NOT NULL REFERENCES members(id),
             status_id INTEGER NOT NULL REFERENCES statuses(id),
+            until     TEXT,  -- when it expires (UTC time); NULL = until changed
             PRIMARY KEY (member_id, status_id)
         )
     """)
@@ -85,7 +86,8 @@ def get_or_create_status(text):
 
 # ---------- member_statuses (who has which status) ----------
 
-def list_member_statuses(member_id):
+def list_member_statuses(member_id, now):
+    """Statuses this member has right now; expired ones are skipped."""
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute(
         """
@@ -93,19 +95,24 @@ def list_member_statuses(member_id):
         FROM member_statuses
         JOIN statuses ON statuses.id = member_statuses.status_id
         WHERE member_statuses.member_id = ?
+          AND (member_statuses.until IS NULL OR member_statuses.until > ?)
         """,
-        (member_id,),
+        (member_id, now),
     ).fetchall()
     conn.close()
     return rows
 
-def add_status_to_member(member_id, status_id):
+def add_status_to_member(member_id, status_id, until=None):
     conn = sqlite3.connect(DB_PATH)
     try:
         conn.execute("PRAGMA foreign_keys = ON")  # SQLite ignores REFERENCES unless this is on
+        # if they already have this status, just update how long it lasts
         conn.execute(
-            "INSERT INTO member_statuses (member_id, status_id) VALUES (?, ?)",
-            (member_id, status_id),
+            """
+            INSERT INTO member_statuses (member_id, status_id, until) VALUES (?, ?, ?)
+            ON CONFLICT (member_id, status_id) DO UPDATE SET until = excluded.until
+            """,
+            (member_id, status_id, until),
         )
         conn.commit()
     finally:
