@@ -8,7 +8,7 @@ def init_db():
     conn.execute("""
         CREATE TABLE IF NOT EXISTS members (
             id   INTEGER PRIMARY KEY,
-            name  TEXT NOT NULL
+            name  TEXT NOT NULL UNIQUE
         )
     """)
     conn.commit()      # save changes to the file
