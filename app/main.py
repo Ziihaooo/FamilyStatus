@@ -1,3 +1,5 @@
+import os
+import secrets
 import sqlite3
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Annotated
@@ -5,8 +7,9 @@ from typing import Annotated
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
-from app import db
+from app import auth, db
 
 MAX_NAME = 40
 MAX_STATUS = 40
@@ -38,6 +41,16 @@ def expiry_for(duration):
 app = FastAPI()
 db.init_db() # create the database and table if they don't exist yet
 
+# Signed session cookie. No SESSION_SECRET (e.g. in tests) → a random one per start,
+# never a hardcoded fallback that could end up in production.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get("SESSION_SECRET") or secrets.token_urlsafe(32),
+    same_site="lax",
+    https_only=False,  # TODO(OPS): True once served over HTTPS
+)
+app.include_router(auth.router)
+
 templates = Jinja2Templates(directory="app/templates")
 
 
@@ -53,7 +66,12 @@ def read_family(request: Request, error: str | None = None):
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"family": family, "presets": db.list_statuses(), "error": error},
+        context={
+            "family": family,
+            "presets": db.list_statuses(),
+            "error": error,
+            "email": request.session.get("email"),  # None if not logged in
+        },
     )
 
 
