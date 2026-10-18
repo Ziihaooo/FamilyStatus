@@ -1,11 +1,16 @@
 from app import db
 
 
+def names():
+    """Member names in family 1, apart from the logged-in tester."""
+    return [name for _, name in db.list_members(1) if name != "Tester"]
+
+
 def test_add_member_via_form(client):
     r = client.post("/members", data={"name": "  Dad  "}, follow_redirects=False)
 
     assert r.status_code == 303
-    assert db.list_members(1) == [(1, "Dad")]  # spaces stripped
+    assert names() == ["Dad"]  # spaces stripped
 
 
 def test_duplicate_name_shows_error(client):
@@ -13,20 +18,20 @@ def test_duplicate_name_shows_error(client):
     r = client.post("/members", data={"name": "Dad"})
 
     assert "already exists" in r.text
-    assert len(db.list_members(1)) == 1
+    assert names() == ["Dad"]
 
 
 def test_blank_name_rejected(client):
     client.post("/members", data={"name": "   "})
 
-    assert db.list_members(1) == []
+    assert names() == []
 
 
 def test_too_long_name_rejected(client):
     r = client.post("/members", data={"name": "x" * 41})
 
     assert r.status_code == 422
-    assert db.list_members(1) == []
+    assert names() == []
 
 
 def test_name_is_html_escaped(client):

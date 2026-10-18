@@ -31,8 +31,6 @@ def init_db():
             UNIQUE (family_id, name)  -- no two "Dad"s in the same family
         )
     """)
-    # one family for now, until sign-up exists
-    conn.execute("INSERT OR IGNORE INTO families (id, name) VALUES (1, 'My family')")
     # the catalog: every status that exists, preset or custom, stored once
     conn.execute("""
         CREATE TABLE IF NOT EXISTS statuses (
@@ -99,14 +97,61 @@ def get_or_create_user(email):
     finally:
         conn.close()
 
-def member_for_user(user_id):
-    """(member_id, family_id) for this user, or None if they're not in a family yet."""
+def list_families_for_user(user_id):
+    """[(family_id, family_name), ...] for every family this user is a member of."""
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        """
+        SELECT families.id, families.name FROM members
+        JOIN families ON families.id = members.family_id
+        WHERE members.user_id = ?
+        ORDER BY families.id
+        """,
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+def is_member_of(user_id, family_id):
     conn = sqlite3.connect(DB_PATH)
     row = conn.execute(
-        "SELECT id, family_id FROM members WHERE user_id = ?", (user_id,)
+        "SELECT 1 FROM members WHERE user_id = ? AND family_id = ?", (user_id, family_id)
     ).fetchone()
     conn.close()
-    return row
+    return row is not None
+
+
+# ---------- families ----------
+
+class DuplicateFamilyName(Exception):
+    """This user is already in a family with that name."""
+
+def create_family(family_name, user_id, member_name):
+    """Create a family and make this user its first member. Returns the new family id."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        # rule: one person can't be in two families with the same name
+        already = conn.execute(
+            """
+            SELECT 1 FROM members
+            JOIN families ON families.id = members.family_id
+            WHERE members.user_id = ? AND families.name = ?
+            """,
+            (user_id, family_name),
+        ).fetchone()
+        if already:
+            raise DuplicateFamilyName(family_name)
+
+        cur = conn.execute("INSERT INTO families (name) VALUES (?)", (family_name,))
+        family_id = cur.lastrowid  # the id SQLite just created
+        conn.execute(
+            "INSERT INTO members (family_id, user_id, name) VALUES (?, ?, ?)",
+            (family_id, user_id, member_name),
+        )
+        conn.commit()  # one commit: both rows are saved, or neither is
+        return family_id
+    finally:
+        conn.close()
 
 
 # ---------- statuses (the catalog) ----------
