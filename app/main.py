@@ -55,8 +55,24 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 # plain def (not async): sqlite3 is blocking, so FastAPI runs these in a thread
+@app.get("/welcome")
+def welcome(request: Request):
+    user_id = request.session.get("user_id")
+    if user_id is None:
+        return RedirectResponse("/", status_code=303)  # not logged in
+    if db.member_for_user(user_id):
+        return RedirectResponse("/", status_code=303)  # already in a family
+    return templates.TemplateResponse(
+        request=request, name="welcome.html", context={"email": request.session.get("email")}
+    )
+
+
 @app.get("/")
 def read_family(request: Request, error: str | None = None):
+    user_id = request.session.get("user_id")
+    if user_id is not None and not db.member_for_user(user_id):
+        return RedirectResponse("/welcome", status_code=303)  # logged in, but no family yet
+
     # each member as (id, name, [their statuses])
     now = utc_now().isoformat()
     family = [

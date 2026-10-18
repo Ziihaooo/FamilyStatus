@@ -9,6 +9,13 @@ PRESET_STATUSES = ["Home", "Out", "Busy", "Sleeping"]
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
+    # a real person who logs in (one Google account = one user)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id    INTEGER PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE
+        )
+    """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS families (
             id   INTEGER PRIMARY KEY,
@@ -19,6 +26,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS members (
             id        INTEGER PRIMARY KEY,
             family_id INTEGER NOT NULL REFERENCES families(id),
+            user_id   INTEGER REFERENCES users(id),  -- NULL = member without a login (e.g. Grandma)
             name      TEXT NOT NULL,
             UNIQUE (family_id, name)  -- no two "Dad"s in the same family
         )
@@ -76,6 +84,29 @@ def delete_member(member_id):
     conn.execute("DELETE FROM members WHERE id = ?", (member_id,))
     conn.commit()
     conn.close()
+
+
+# ---------- users (people who log in) ----------
+
+def get_or_create_user(email):
+    """Return the id of the user with this email, creating them on first login."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
+        conn.commit()
+        row = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        return row[0]
+    finally:
+        conn.close()
+
+def member_for_user(user_id):
+    """(member_id, family_id) for this user, or None if they're not in a family yet."""
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT id, family_id FROM members WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    return row
 
 
 # ---------- statuses (the catalog) ----------
