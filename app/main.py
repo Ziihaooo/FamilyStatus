@@ -81,6 +81,18 @@ UserId = Annotated[int | None, Depends(current_user_id)]
 FamilyId = Annotated[int | None, Depends(current_family_id)]
 
 
+def check_member_access(member_id: int, family_id: FamilyId):
+    """Gate for every route that touches a member: must be logged in, and the
+    member must be in YOUR current family. 404 (not 403) so attackers can't tell
+    'exists in another family' from 'doesn't exist'."""
+    if family_id is None or not db.member_in_family(member_id, family_id):
+        raise HTTPException(status_code=404, detail="Member not found")
+    return member_id
+
+
+MemberId = Annotated[int, Depends(check_member_access)]
+
+
 # plain def (not async): sqlite3 is blocking, so FastAPI runs these in a thread
 @app.get("/welcome")
 def welcome(request: Request, user_id: UserId):
@@ -121,7 +133,7 @@ def read_family(
 
 @app.post("/members/{member_id}/statuses")
 def give_status(
-    member_id: int,
+    member_id: MemberId,
     status_id: Annotated[int, Form()],
     duration: Annotated[str, Form()] = "forever",
 ):
@@ -135,7 +147,7 @@ def give_status(
 
 @app.post("/members/{member_id}/statuses/custom")
 def give_custom_status(
-    member_id: int,
+    member_id: MemberId,
     text: Annotated[str, Form(max_length=MAX_STATUS)],
     duration: Annotated[str, Form()] = "forever",
 ):
@@ -150,7 +162,7 @@ def give_custom_status(
 
 
 @app.post("/members/{member_id}/statuses/{status_id}/remove")
-def take_status(member_id: int, status_id: int):
+def take_status(member_id: MemberId, status_id: int):
     db.remove_status_from_member(member_id, status_id)
     return RedirectResponse("/", status_code=303)
 

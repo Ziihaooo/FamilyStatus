@@ -77,6 +77,15 @@ def add_member(family_id, name):
     finally:
         conn.close()  # runs even if the INSERT fails, so no lock is left behind
 
+def member_in_family(member_id, family_id):
+    """True only if this member belongs to this family (the access-control check)."""
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT 1 FROM members WHERE id = ? AND family_id = ?", (member_id, family_id)
+    ).fetchone()
+    conn.close()
+    return row is not None
+
 def delete_member(member_id):
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM members WHERE id = ?", (member_id,))
