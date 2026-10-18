@@ -9,6 +9,13 @@ PRESET_STATUSES = ["Home", "Out", "Busy", "Sleeping"]
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
+    # a real person who logs in (one Google account = one user)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id    INTEGER PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE
+        )
+    """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS families (
             id   INTEGER PRIMARY KEY,
@@ -19,12 +26,11 @@ def init_db():
         CREATE TABLE IF NOT EXISTS members (
             id        INTEGER PRIMARY KEY,
             family_id INTEGER NOT NULL REFERENCES families(id),
+            user_id   INTEGER REFERENCES users(id),  -- NULL = member without a login (e.g. Grandma)
             name      TEXT NOT NULL,
             UNIQUE (family_id, name)  -- no two "Dad"s in the same family
         )
     """)
-    # one family for now, until sign-up exists
-    conn.execute("INSERT OR IGNORE INTO families (id, name) VALUES (1, 'My family')")
     # the catalog: every status that exists, preset or custom, stored once
     conn.execute("""
         CREATE TABLE IF NOT EXISTS statuses (
@@ -76,6 +82,76 @@ def delete_member(member_id):
     conn.execute("DELETE FROM members WHERE id = ?", (member_id,))
     conn.commit()
     conn.close()
+
+
+# ---------- users (people who log in) ----------
+
+def get_or_create_user(email):
+    """Return the id of the user with this email, creating them on first login."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
+        conn.commit()
+        row = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        return row[0]
+    finally:
+        conn.close()
+
+def list_families_for_user(user_id):
+    """[(family_id, family_name), ...] for every family this user is a member of."""
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        """
+        SELECT families.id, families.name FROM members
+        JOIN families ON families.id = members.family_id
+        WHERE members.user_id = ?
+        ORDER BY families.id
+        """,
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+def is_member_of(user_id, family_id):
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT 1 FROM members WHERE user_id = ? AND family_id = ?", (user_id, family_id)
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+# ---------- families ----------
+
+class DuplicateFamilyName(Exception):
+    """This user is already in a family with that name."""
+
+def create_family(family_name, user_id, member_name):
+    """Create a family and make this user its first member. Returns the new family id."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        # rule: one person can't be in two families with the same name
+        already = conn.execute(
+            """
+            SELECT 1 FROM members
+            JOIN families ON families.id = members.family_id
+            WHERE members.user_id = ? AND families.name = ?
+            """,
+            (user_id, family_name),
+        ).fetchone()
+        if already:
+            raise DuplicateFamilyName(family_name)
+
+        cur = conn.execute("INSERT INTO families (name) VALUES (?)", (family_name,))
+        family_id = cur.lastrowid  # the id SQLite just created
+        conn.execute(
+            "INSERT INTO members (family_id, user_id, name) VALUES (?, ?, ?)",
+            (family_id, user_id, member_name),
+        )
+        conn.commit()  # one commit: both rows are saved, or neither is
+        return family_id
+    finally:
+        conn.close()
 
 
 # ---------- statuses (the catalog) ----------

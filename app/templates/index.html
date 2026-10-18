@@ -27,6 +27,9 @@
         </select>
     {% endmacro %}
 
+    {% if logged_in %}{# logged out → nothing below is shown #}
+    <p><a href="/welcome">Create or join another family</a></p>
+
     <ul>
     {% for id, name, statuses in family %}
         <li>{{ id }} - {{ name }}:
@@ -61,5 +64,6 @@
         <input name="name" maxlength="40" required>
         <button type="submit">Add member</button>
     </form>
+    {% endif %}
 </body>
 </html>

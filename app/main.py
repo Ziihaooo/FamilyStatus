@@ -4,7 +4,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -15,7 +15,6 @@ MAX_NAME = 40
 MAX_STATUS = 40
 FAMILY_TZ = timezone(timedelta(hours=8))  # family's local time, used for "today"
 DURATIONS = ["1h", "3h", "today", "forever"]
-FAMILY_ID = 1  # TEMPORARY: everyone is in family 1 until login tells us whose family it is
 
 
 def utc_now():
@@ -54,19 +53,64 @@ app.include_router(auth.router)
 templates = Jinja2Templates(directory="app/templates")
 
 
+def current_user_id(request: Request):
+    """Who is logged in (from the signed session cookie), or None."""
+    return request.session.get("user_id")
+
+
+def current_family_id(request: Request):
+    """The family this user is looking at right now, or None if they have no family.
+
+    session["family_id"] remembers the choice; it is re-checked on every request,
+    so a stale or tampered value can never show someone else's family.
+    """
+    user_id = current_user_id(request)
+    if user_id is None:
+        return None
+    family_id = request.session.get("family_id")
+    if family_id is not None and db.is_member_of(user_id, family_id):
+        return family_id
+    families = db.list_families_for_user(user_id)
+    if not families:
+        return None
+    request.session["family_id"] = families[0][0]  # default: their first family
+    return families[0][0]
+
+
+UserId = Annotated[int | None, Depends(current_user_id)]
+FamilyId = Annotated[int | None, Depends(current_family_id)]
+
+
 # plain def (not async): sqlite3 is blocking, so FastAPI runs these in a thread
+@app.get("/welcome")
+def welcome(request: Request, user_id: UserId):
+    if user_id is None:
+        return RedirectResponse("/", status_code=303)  # not logged in
+    return templates.TemplateResponse(
+        request=request, name="welcome.html", context={"email": request.session.get("email")}
+    )
+
+
 @app.get("/")
-def read_family(request: Request, error: str | None = None):
+def read_family(
+    request: Request, user_id: UserId, family_id: FamilyId, error: str | None = None
+):
+    if user_id is None:  # logged out: show only the sign-in link, no family data
+        return templates.TemplateResponse(request=request, name="index.html", context={})
+    if family_id is None:
+        return RedirectResponse("/welcome", status_code=303)  # logged in, but no family yet
+
     # each member as (id, name, [their statuses])
     now = utc_now().isoformat()
     family = [
         (member_id, name, db.list_member_statuses(member_id, now))
-        for member_id, name in db.list_members(FAMILY_ID)
+        for member_id, name in db.list_members(family_id)
     ]
     return templates.TemplateResponse(
         request=request,
         name="index.html",
         context={
+            "logged_in": True,
             "family": family,
             "presets": db.list_statuses(),
             "error": error,
@@ -111,13 +155,35 @@ def take_status(member_id: int, status_id: int):
     return RedirectResponse("/", status_code=303)
 
 
+@app.post("/families")
+def create_family(
+    request: Request,
+    user_id: UserId,  # who you are comes from the session, never the form
+    family_name: Annotated[str, Form(max_length=MAX_NAME)],
+    your_name: Annotated[str, Form(max_length=MAX_NAME)],
+):
+    if user_id is None:
+        return RedirectResponse("/", status_code=303)
+    family_name, your_name = family_name.strip(), your_name.strip()
+    if not family_name or not your_name:
+        return RedirectResponse("/welcome", status_code=303)
+    try:
+        new_family_id = db.create_family(family_name, user_id, your_name)
+    except db.DuplicateFamilyName:
+        return RedirectResponse("/welcome", status_code=303)
+    request.session["family_id"] = new_family_id  # switch to the family you just made
+    return RedirectResponse("/", status_code=303)
+
+
 @app.post("/members")
-def create_member(name: Annotated[str, Form(max_length=MAX_NAME)]):
+def create_member(family_id: FamilyId, name: Annotated[str, Form(max_length=MAX_NAME)]):
+    if family_id is None:
+        return RedirectResponse("/", status_code=303)
     name = name.strip()
     if not name:
         return RedirectResponse("/?error=empty", status_code=303)
     try:
-        db.add_member(FAMILY_ID, name)
+        db.add_member(family_id, name)
     except sqlite3.IntegrityError:  # UNIQUE (family_id, name)
         return RedirectResponse("/?error=duplicate", status_code=303)
     return RedirectResponse("/", status_code=303)

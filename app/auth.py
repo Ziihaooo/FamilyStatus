@@ -6,6 +6,8 @@ from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
+from app import db
+
 router = APIRouter()
 
 oauth = OAuth()
@@ -39,8 +41,11 @@ async def auth_callback(request: Request):
     if not user or not user.get("email_verified"):
         return RedirectResponse("/?error=login_failed", status_code=303)
 
+    user_id = db.get_or_create_user(user["email"])
+
     request.session.clear()  # fresh session on login (prevents session fixation)
-    request.session["email"] = user["email"]
+    request.session["user_id"] = user_id  # who you are, from now on
+    request.session["email"] = user["email"]  # only for showing "Logged in as ..."
     return RedirectResponse("/", status_code=303)
 
 
